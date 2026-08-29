@@ -62,6 +62,8 @@ android {
         create("tv") {
             dimension = "device"
             applicationIdSuffix = ".tv"
+            versionCode = 7
+            versionName = "1.4"
             versionNameSuffix = "-tv"
             buildConfigField("boolean", "IS_TV", "true")
             ndk {
@@ -108,6 +110,13 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)
+}
+
+androidComponents {
+    beforeVariants(selector().withFlavor("device", "tv").withBuildType("release")) { variant ->
+        variant.isMinifyEnabled = false
+        variant.shrinkResources = false
+    }
 }
 
 val releaseAndroid = rootProject.projectDir.parentFile.resolve("release").resolve("android")

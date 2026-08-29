@@ -60,8 +60,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        if (!BuildConfig.IS_TV) requestPeakRefreshRate()
+        // enableEdgeToEdge() recreates / crashes some Android 9 TVs (AIWA / Mali-450).
+        if (!BuildConfig.IS_TV) {
+            enableEdgeToEdge()
+            requestPeakRefreshRate()
+        }
         val store = SessionStore(applicationContext)
         val api = WatchApi(store)
         setContent {
@@ -115,7 +118,7 @@ class MainActivity : ComponentActivity() {
                     containerColor = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.onBackground,
                 ) { inner ->
-                    when (session) {
+                    if (!BuildConfig.IS_TV || introDone) when (session) {
                         SessionState.Setup -> ConnectScreen(
                             store = store,
                             api = api,

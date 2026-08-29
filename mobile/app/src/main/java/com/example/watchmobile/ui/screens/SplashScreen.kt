@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.example.watchmobile.BuildConfig
 
 private val Accent = Color(0xFF8B5CF6)
 private val Backdrop = Color(0xFF09090B)
@@ -56,6 +57,16 @@ fun SplashScreen(
     onIntroFinished: () -> Unit,
     onChangePc: () -> Unit,
 ) {
+    if (BuildConfig.IS_TV) {
+        TvSplashScreen(
+            holding = holding,
+            status = status,
+            showChangePc = showChangePc,
+            onIntroFinished = onIntroFinished,
+            onChangePc = onChangePc,
+        )
+        return
+    }
     val ring = remember { Animatable(0f) }
     val glow = remember { Animatable(0f) }
     val title = remember { Animatable(0f) }
@@ -160,6 +171,54 @@ fun SplashScreen(
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 96.dp)
                     .graphicsLayer { alpha = breathe.value },
+            )
+        }
+        if (showChangePc) {
+            TextButton(
+                onClick = onChangePc,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 40.dp),
+            ) {
+                Text("Use a different PC")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvSplashScreen(
+    holding: Boolean,
+    status: String,
+    showChangePc: Boolean,
+    onIntroFinished: () -> Unit,
+    onChangePc: () -> Unit,
+) {
+    LaunchedEffect(Unit) {
+        delay(900)
+        onIntroFinished()
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Backdrop),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            "WATCH",
+            color = Color.White,
+            fontSize = 34.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 10.sp,
+        )
+        if (holding && status.isNotBlank()) {
+            Text(
+                status,
+                color = Color.White.copy(alpha = 0.55f),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 96.dp),
             )
         }
         if (showChangePc) {

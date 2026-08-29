@@ -56,15 +56,20 @@ fun TvVlcPlayer(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     Gravity.CENTER,
                 )
-                val lib = LibVLC(
-                    ctx,
-                    arrayListOf(
-                        "--aout=opensles",
-                        "--network-caching=4000",
-                        "--http-reconnect",
-                        "--avcodec-hw=any",
-                    ),
-                )
+                val lib = try {
+                    LibVLC(
+                        ctx,
+                        arrayListOf(
+                            "--aout=opensles",
+                            "--network-caching=4000",
+                            "--http-reconnect",
+                            "--avcodec-hw=any",
+                        ),
+                    )
+                } catch (e: Throwable) {
+                    error = e.message ?: "VLC failed to start"
+                    return@AndroidView FrameLayout(ctx)
+                }
                 val vlc = MediaPlayer(lib)
                 val held = VlcHold(lib, vlc)
                 layout.tag = held

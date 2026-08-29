@@ -1,4 +1,6 @@
-# Watch TV
+# Watch TV 1.4
+
+Sideload **Watch-tv.apk**. Separate from the phone app (`com.example.watchmobile.tv`). Uninstall the previous Watch TV app first if this one will not install over it.
 
 Sideload **Watch-tv.apk**. Separate from the phone app (`com.example.watchmobile.tv`).
 
