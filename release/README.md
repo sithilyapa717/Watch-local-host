@@ -1,31 +1,24 @@
-# Watch releases (local copies)
+# Releases
 
-Git does **not** store `.exe` / `.apk` files. After you build, attach them to a **GitHub Release**.
-
-If you keep copies on disk:
-
-```
-release/
-  desktop/
-    latest/          # current Windows installer + portable
-    archive/         # old versions (keep off git)
-  android/
-    phone/           # Watch-phone.apk
-    tv/              # Watch-tv.apk
-```
+Installers and APKs are published on the GitHub **Releases** page when available. They are not stored in this git repo.
 
 ## Desktop
 
-From `desktop/`: `npm run tauri build`  
-Then copy from `desktop/src-tauri/target/release/bundle/` into a GitHub Release.
+From `desktop/`:
+
+```bash
+npm run tauri build
+```
+
+Then use the files under `desktop/src-tauri/target/release/bundle/`.
 
 ## Android
 
-From `mobile/`:
+Build **phoneRelease** or **tvRelease** in Android Studio, or from `mobile/`:
 
 ```bat
-gradlew copyPhoneReleaseToDist
-gradlew copyTvReleaseToDist
+gradlew assemblePhoneRelease
+gradlew assembleTvRelease
 ```
 
-See [`android/phone/README.md`](android/phone/README.md) and [`android/tv/README.md`](android/tv/README.md) for sideload notes.
+Sideload notes: [android/phone/README.md](android/phone/README.md) and [android/tv/README.md](android/tv/README.md).

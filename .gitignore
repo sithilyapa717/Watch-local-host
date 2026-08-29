@@ -31,6 +31,7 @@ mobile/.idea/
 .env
 .env.*
 *.local
+NOTES.local.md
 *.keystore
 *.jks
 

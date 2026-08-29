@@ -2,7 +2,7 @@
 
 Windows app (Tauri 2 + React + Rust). Scans your library folders, pulls TMDB metadata, and plays files in mpv.
 
-## Prerequisites
+## Requirements
 
 1. **Node.js 20+**
 2. **Rust** — https://rustup.rs
@@ -15,29 +15,22 @@ Windows app (Tauri 2 + React + Rust). Scans your library folders, pulls TMDB met
 ```bash
 cd desktop
 npm install
-```
-
-In the app: **Settings** → library folder(s) + TMDB API key.
-
-Do not commit the API key. It is stored in app data on your machine.
-
-## Development
-
-```bash
 npm run tauri dev
 ```
 
-## Production build
+In **Settings**, add your library folder(s) and TMDB API key.
+
+## Build
 
 ```bash
 npm run tauri build
 ```
 
-Installer output: `src-tauri/target/release/bundle/` (this folder is not for git). Copy the installer to a GitHub Release if you want to share it.
+Installer output: `src-tauri/target/release/bundle/`.
 
 ## Library layout
 
-Watch infers type from folder names (case-insensitive), not from a drive letter:
+Watch infers type from folder names (case-insensitive):
 
 ```
 <library folder>\
@@ -53,17 +46,6 @@ Watch infers type from folder names (case-insensitive), not from a drive letter:
 
 `Movies\…` is never treated as anime.
 
-## Features
-
-- Recursive library scan
-- TMDB posters/metadata (cached offline)
-- Movies, TV, Anime, Not Organized
-- Show → season → episode (owned vs missing)
-- Search (Ctrl+K), filters (Ctrl+Shift+F)
-- Continue Watching / incomplete series
-- mpv playback with resume
-- LAN API on port **8742** for the phone/TV apps
-
 ## Keyboard shortcuts
 
 | Key | Action |
@@ -72,4 +54,4 @@ Watch infers type from folder names (case-insensitive), not from a drive letter:
 | Ctrl+Shift+F | Toggle filters |
 | Space / F / M | Player controls (in mpv) |
 
-Phone/TV setup: [`../mobile/README.md`](../mobile/README.md).
+Phone and TV apps: [../mobile/README.md](../mobile/README.md).
