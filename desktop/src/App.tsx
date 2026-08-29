@@ -15,6 +15,8 @@ import { LoadingScreen } from "@/components/layout/LoadingScreen";
 import { JobProgressProvider } from "@/lib/jobs/jobProgress";
 import { api, type ScannedFile } from "@/lib/api/tauri";
 import { NEW_FILES_EVENT, notifyLibraryUpdated } from "@/lib/events";
+import { SetupWizard } from "@/components/setup/SetupWizard";
+import { isSetupComplete } from "@/lib/setup";
 
 function failedFiles(result: { failed: string[] }, files: ScannedFile[]) {
   if (result.failed.length === 0) return files;
@@ -26,6 +28,7 @@ function failedFiles(result: { failed: string[] }, files: ScannedFile[]) {
 function AppRoutes() {
   const navigate = useNavigate();
   const [searchOpen, setSearchOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const [newFiles, setNewFiles] = useState<ScannedFile[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [organizing, setOrganizing] = useState(false);
@@ -45,7 +48,12 @@ function AppRoutes() {
   }, []);
 
   useEffect(() => {
-    runStartupScan();
+    if (isSetupComplete()) {
+      setSetupOpen(false);
+      void runStartupScan();
+      return;
+    }
+    setSetupOpen(true);
   }, [runStartupScan]);
 
   useEffect(() => {
@@ -171,6 +179,13 @@ function AppRoutes() {
         result={organizeResult}
         error={organizeError}
       />
+      {setupOpen && (
+        <SetupWizard
+          onComplete={() => {
+            setSetupOpen(false);
+          }}
+        />
+      )}
       <LoadingScreen />
     </>
   );

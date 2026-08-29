@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { api } from "@/lib/api/tauri";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/lib/theme/theme";
+import { searchPanelFor } from "@/lib/theme/motion";
 
 interface SearchOverlayProps {
   open: boolean;
@@ -11,6 +13,7 @@ interface SearchOverlayProps {
 }
 
 export function SearchOverlay({ open, onClose, onNavigate }: SearchOverlayProps) {
+  const { theme } = useTheme();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Record<string, string>[]>([]);
   const [selected, setSelected] = useState(0);
@@ -52,20 +55,40 @@ export function SearchOverlay({ open, onClose, onNavigate }: SearchOverlayProps)
   return (
     <AnimatePresence>
       {open && (
-        <motion.div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <motion.div
+          className={cn(
+            "fixed inset-0 z-50 flex p-4",
+            theme === "marquee" ? "items-start justify-center pt-10" : "items-start justify-center pt-[15vh]",
+          )}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div
+            className={cn(
+              "absolute inset-0",
+              theme === "marquee" ? "bg-black/80" : "bg-black/60 backdrop-blur-sm",
+              theme === "pulse" && "bg-cyan-950/50 backdrop-blur-md",
+            )}
+            onClick={onClose}
+          />
           <motion.div
-            className="relative z-10 w-full max-w-xl rounded-2xl bg-surface border border-white/10 shadow-2xl overflow-hidden"
-            initial={{ opacity: 0, scale: 0.96, y: -8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            className={cn(
+              "relative z-10 w-full overflow-hidden border shadow-2xl",
+              theme === "default" && "max-w-xl rounded-2xl bg-surface border-white/10",
+              theme === "marquee" && "max-w-2xl rounded-none bg-[#16110c] border-accent/50",
+              theme === "pulse" && "max-w-lg rounded-[2rem] bg-surface border-accent/40 shadow-[0_0_40px_rgb(34_211_238_/_0.2)]",
+            )}
+            {...searchPanelFor(theme)}
           >
-            <div className="flex items-center gap-3 px-4 border-b border-white/8">
-              <Search size={18} className="text-muted shrink-0" />
+            <div className={cn("flex items-center gap-3 border-b border-white/8", theme === "pulse" ? "px-5" : "px-4")}>
+              <Search size={18} className={cn("shrink-0", theme === "pulse" ? "text-accent" : "text-muted")} />
               <input
                 autoFocus
-                className="flex-1 bg-transparent py-4 outline-none text-white placeholder:text-muted"
+                className={cn(
+                  "flex-1 bg-transparent outline-none text-white placeholder:text-muted",
+                  theme === "marquee" ? "py-5 theme-title text-lg" : "py-4",
+                )}
                 placeholder="Search movies, shows, episodes…"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -74,7 +97,20 @@ export function SearchOverlay({ open, onClose, onNavigate }: SearchOverlayProps)
             </div>
             <div className="flex gap-2 p-2 border-b border-white/8">
               {(["all", "movie", "show"] as const).map((f) => (
-                <button key={f} onClick={() => setFilter(f)} className={cn("px-3 py-1 rounded-lg text-xs capitalize", filter === f ? "bg-accent text-white" : "text-muted hover:bg-white/5")}>
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={cn(
+                    "px-3 py-1 text-xs capitalize",
+                    theme === "pulse" && "rounded-full px-4 py-1.5",
+                    theme === "default" && "rounded-lg",
+                    filter === f
+                      ? theme === "pulse"
+                        ? "bg-accent text-background"
+                        : "bg-accent text-white"
+                      : "text-muted hover:bg-white/5",
+                  )}
+                >
                   {f}
                 </button>
               ))}
@@ -86,7 +122,11 @@ export function SearchOverlay({ open, onClose, onNavigate }: SearchOverlayProps)
                   initial={{ opacity: 0, y: 4 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.02 }}
-                  className={cn("px-3 py-2 rounded-lg cursor-pointer text-sm", i === selected ? "bg-accent/20" : "hover:bg-white/5")}
+                  className={cn(
+                    "px-3 py-2 cursor-pointer text-sm",
+                    theme === "pulse" ? "rounded-2xl" : "rounded-lg",
+                    i === selected ? "bg-accent/20" : "hover:bg-white/5",
+                  )}
                   onClick={() => { onNavigate(r.entity_type, r.entity_id); onClose(); }}
                 >
                   <span className="text-xs text-muted uppercase mr-2">{r.entity_type}</span>

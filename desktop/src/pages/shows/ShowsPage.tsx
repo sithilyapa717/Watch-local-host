@@ -4,7 +4,7 @@ import { api } from "@/lib/api/tauri";
 import { LIBRARY_UPDATED } from "@/lib/events";
 import type { ShowItem } from "@/lib/api/tauri";
 import { ShowCard } from "@/components/cards/ShowCard";
-import { FilterBar, defaultFilters, applyShowFilters, type FilterState } from "@/components/search/FilterBar";
+import { FilterBar, loadFilters, applyShowFilters, type FilterState } from "@/components/search/FilterBar";
 import { ShimmerSkeleton } from "@/components/ui/MotionCard";
 import { showTileMenu } from "@/lib/menu/tileMenus";
 
@@ -17,10 +17,7 @@ interface ShowsPageProps {
 export function ShowsPage({ category, title, basePath }: ShowsPageProps) {
   const navigate = useNavigate();
   const [shows, setShows] = useState<ShowItem[]>([]);
-  const [filters, setFilters] = useState<FilterState>(() => {
-    const saved = localStorage.getItem(`filters-${category}`);
-    return saved ? JSON.parse(saved) : defaultFilters;
-  });
+  const [filters, setFilters] = useState<FilterState>(() => loadFilters(`filters-${category}`));
   const [filterOpen, setFilterOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -34,6 +31,7 @@ export function ShowsPage({ category, title, basePath }: ShowsPageProps) {
 
   useEffect(() => {
     localStorage.setItem(`filters-${category}`, JSON.stringify(filters));
+    localStorage.setItem("watch-hide-removed", filters.hideRemoved ? "1" : "0");
   }, [filters, category]);
 
   useEffect(() => {
@@ -53,7 +51,7 @@ export function ShowsPage({ category, title, basePath }: ShowsPageProps) {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-4">{title}</h1>
+      <h1 className="text-2xl font-bold mb-4 theme-title">{title}</h1>
       <FilterBar
         open={filterOpen}
         onToggle={() => setFilterOpen((o) => !o)}

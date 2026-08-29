@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type { EpisodeRow } from "@/lib/api/tauri";
 import { Check } from "lucide-react";
+import { useTheme } from "@/lib/theme/theme";
 
 interface EpisodeListProps {
   episodes: EpisodeRow[];
@@ -11,6 +12,7 @@ interface EpisodeListProps {
 }
 
 export function EpisodeList({ episodes, filter, onPlay }: EpisodeListProps) {
+  const { theme } = useTheme();
   const filtered = episodes.filter((ep) => {
     if (filter === "owned") return ep.status !== "missing";
     if (filter === "missing") return ep.status === "missing";
@@ -28,14 +30,19 @@ export function EpisodeList({ episodes, filter, onPlay }: EpisodeListProps) {
         return (
           <motion.div
             key={ep.episode_number}
-            initial={{ opacity: 0, x: -8 }}
+            initial={{ opacity: 0, x: theme === "pulse" ? 16 : -8 }}
             animate={{ opacity: isMissing || removed ? 0.45 : 1, x: 0 }}
-            transition={{ delay: i * 0.02 }}
+            transition={{ delay: i * (theme === "marquee" ? 0.04 : 0.02) }}
             className={cn(
-              "flex items-center gap-4 p-3 rounded-xl border",
+              "flex items-center gap-4",
+              theme === "default" && "p-3 rounded-xl border",
+              theme === "marquee" && "border-b border-white/8 py-3",
+              theme === "pulse" && "rounded-2xl border p-4",
               isMissing || removed
                 ? "border-dashed border-white/10 bg-white/2"
-                : "border-white/8 bg-surface hover:bg-surface-hover cursor-pointer",
+                : theme === "marquee"
+                  ? "hover:bg-white/5 cursor-pointer"
+                  : "border-white/8 bg-surface hover:bg-surface-hover cursor-pointer",
             )}
             title={
               isMissing
@@ -92,10 +99,11 @@ export function CompletenessSummary({
   return (
     <div className="flex items-start gap-6 p-4 rounded-xl bg-surface border border-white/8">
       <div className="relative w-16 h-16 shrink-0">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
+        <svg className="w-full h-full -rotate-90 text-accent" viewBox="0 0 36 36">
           <circle cx="18" cy="18" r="15" fill="none" stroke="rgb(255 255 255 / 0.1)" strokeWidth="3" />
           <motion.circle
-            cx="18" cy="18" r="15" fill="none" stroke="#8b5cf6" strokeWidth="3"
+            cx="18" cy="18" r="15" fill="none" stroke="currentColor" strokeWidth="3"
+            className="text-accent"
             strokeLinecap="round"
             strokeDasharray={`${pct} ${100 - pct}`}
             initial={{ strokeDasharray: "0 100" }}

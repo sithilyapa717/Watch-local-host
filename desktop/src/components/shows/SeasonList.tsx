@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { cn, formatSeasonLabel } from "@/lib/utils";
 import type { SeasonCompleteness } from "@/lib/api/tauri";
 import { ChevronRight } from "lucide-react";
+import { useTheme } from "@/lib/theme/theme";
 
 interface SeasonListProps {
   seasons: SeasonCompleteness[];
@@ -31,19 +32,31 @@ export function SeasonBadge({ status, owned, total }: { status: string; owned: n
 }
 
 export function SeasonList({ seasons, selectedSeason, onSelect }: SeasonListProps) {
+  const { theme } = useTheme();
   return (
-    <div className="space-y-2">
+    <div className={cn(theme === "pulse" ? "grid gap-3 sm:grid-cols-2" : "space-y-2")}>
       {seasons.map((season) => (
         <motion.button
           key={season.season_number}
           className={cn(
-            "w-full flex items-center justify-between p-4 rounded-xl border transition-colors text-left",
+            "w-full flex items-center justify-between text-left",
+            theme === "default" && "p-4 rounded-xl border transition-colors",
+            theme === "marquee" && "border-b border-white/10 px-1 py-4",
+            theme === "pulse" && "rounded-2xl border-2 p-5",
             selectedSeason === season.season_number
-              ? "bg-accent/10 border-accent/30"
-              : "bg-surface border-white/8 hover:bg-surface-hover"
+              ? theme === "marquee"
+                ? "border-accent text-accent"
+                : theme === "pulse"
+                  ? "border-accent bg-accent/15"
+                  : "bg-accent/10 border-accent/30"
+              : theme === "marquee"
+                ? "hover:text-accent"
+                : theme === "pulse"
+                  ? "border-white/10 bg-surface hover:border-accent/50"
+                  : "bg-surface border-white/8 hover:bg-surface-hover"
           )}
           onClick={() => onSelect(season.season_number)}
-          whileHover={{ scale: 1.01 }}
+          whileHover={theme === "pulse" ? { scale: 1.03 } : { scale: 1.01 }}
           whileTap={{ scale: 0.99 }}
         >
           <div className="flex items-center gap-4">

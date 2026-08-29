@@ -131,15 +131,24 @@ pub fn infer_category_from_rel(rel: &Path) -> String {
 
 fn infer_category_from_rel_str(rel: &str) -> String {
     let parts = segments(rel);
-    // Animated movies live under Movies/Animation — those are movies, not anime.
+    if parts.is_empty() {
+        return "unknown".to_string();
+    }
+    let filename = parts.last().cloned().unwrap_or_default();
+
     if parts.iter().any(|p| is_movie_segment(p)) {
         return "movie".to_string();
     }
     if parts.iter().any(|p| is_anime_segment(p)) {
         return "anime".to_string();
     }
-    if parts.iter().any(|p| is_tv_segment(p)) {
-        return "tv".to_string();
+    if let Some(i) = parts.iter().position(|p| is_tv_segment(p)) {
+        let folders_after = parts.len().saturating_sub(i + 2);
+        if looks_like_episode(&filename) || folders_after >= 1 {
+            return "tv".to_string();
+        }
+        // Direct file in TV / Shows (e.g. Shows/Inception.mkv) is a movie.
+        return "movie".to_string();
     }
     "unknown".to_string()
 }
@@ -393,7 +402,25 @@ mod tests {
     }
 
     #[test]
-    fn volume_root_uses_drive_letter() {
+    fn mixed_shows_folder_movie_and_series() {
+        assert_eq!(
+            infer_category(
+                Path::new(r"D:\media\Shows\Inception.mkv"),
+                r"D:\media"
+            ),
+            "movie"
+        );
+        assert_eq!(
+            infer_category(
+                Path::new(r"D:\media\Shows\Wednesday\Wednesday.S01E01.mkv"),
+                r"D:\media"
+            ),
+            "tv"
+        );
+    }
+
+    #[test]
+    fn volume_root_keeps_drive() {
         assert_eq!(volume_root(r"D:\movies\Film.mkv"), r"D:\");
     }
 }

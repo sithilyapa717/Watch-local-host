@@ -4,17 +4,14 @@ import { api } from "@/lib/api/tauri";
 import { LIBRARY_UPDATED } from "@/lib/events";
 import type { MovieItem } from "@/lib/api/tauri";
 import { MovieCard } from "@/components/cards/MovieCard";
-import { FilterBar, defaultFilters, applyMovieFilters, type FilterState } from "@/components/search/FilterBar";
+import { FilterBar, loadFilters, applyMovieFilters, type FilterState } from "@/components/search/FilterBar";
 import { ShimmerSkeleton } from "@/components/ui/MotionCard";
 import { movieTileMenu } from "@/lib/menu/tileMenus";
 
 export function MoviesPage() {
   const navigate = useNavigate();
   const [movies, setMovies] = useState<MovieItem[]>([]);
-  const [filters, setFilters] = useState<FilterState>(() => {
-    const saved = localStorage.getItem("filters-movies");
-    return saved ? JSON.parse(saved) : defaultFilters;
-  });
+  const [filters, setFilters] = useState<FilterState>(() => loadFilters("filters-movies"));
   const [filterOpen, setFilterOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -28,6 +25,7 @@ export function MoviesPage() {
 
   useEffect(() => {
     localStorage.setItem("filters-movies", JSON.stringify(filters));
+    localStorage.setItem("watch-hide-removed", filters.hideRemoved ? "1" : "0");
   }, [filters]);
 
   useEffect(() => {
@@ -47,7 +45,7 @@ export function MoviesPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold mb-4">Movies</h1>
+      <h1 className="text-2xl font-bold mb-4 theme-title">Movies</h1>
       <FilterBar
         open={filterOpen}
         onToggle={() => setFilterOpen((o) => !o)}

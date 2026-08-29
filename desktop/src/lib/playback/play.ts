@@ -19,5 +19,5 @@ export async function playAndNavigate(
     mode: status.mode,
     subtitles: status.subtitles ?? [],
   });
-  navigate("/player");
+  navigate("/player", { state: { fromPlay: true } });
 }

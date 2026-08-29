@@ -7,6 +7,8 @@ import { api } from "@/lib/api/tauri";
 import { clearPlayerSession, getPlayerSession, setPlayerSession, type SubtitleTrack } from "@/lib/playback/playerSession";
 import { ArrowLeft, Volume2, VolumeX, Maximize, Play, Pause, Captions, SkipForward, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/lib/theme/theme";
+import { backMotionFor, playerEnterFor } from "@/lib/theme/motion";
 
 function isEmbeddableSubtitle(format: string) {
   return format === "srt" || format === "vtt";
@@ -33,6 +35,7 @@ function formatTime(seconds: number) {
 }
 
 export function PlayerPage() {
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -61,6 +64,7 @@ export function PlayerPage() {
   const controlsHoveredRef = useRef(false);
   const seekBarRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+  const cursorHidden = !controlsVisible && playing && !ended && !error;
 
   const embeddableSubs =
     session?.subtitles.filter((sub) => isEmbeddableSubtitle(sub.format)).concat(localSubtitles) ??
@@ -128,6 +132,14 @@ export function PlayerPage() {
     }
     scheduleHideControls();
   }, [playing, ended, scheduleHideControls]);
+
+  useEffect(() => {
+    const previous = document.body.style.cursor;
+    document.body.style.cursor = cursorHidden ? "none" : "";
+    return () => {
+      document.body.style.cursor = previous;
+    };
+  }, [cursorHidden]);
 
   useEffect(() => {
     if (embeddableSubs.length > 0) {
@@ -387,10 +399,14 @@ export function PlayerPage() {
   };
 
   return (
-    <div
+    <motion.div
       ref={containerRef}
-      className="absolute inset-0 overflow-hidden bg-black"
+      className={cn(
+        "absolute inset-0 overflow-hidden bg-black",
+        cursorHidden && "cursor-none [&_*]:cursor-none",
+      )}
       onMouseMove={revealControls}
+      {...playerEnterFor(theme)}
     >
       <div
         className="absolute inset-0 flex items-center justify-center"
@@ -492,25 +508,37 @@ export function PlayerPage() {
         {controlsVisible && (
           <motion.button
             type="button"
-            className="absolute left-4 top-4 z-30 flex items-center gap-2 rounded-full bg-black/45 px-4 py-2 text-sm text-white/90 backdrop-blur-md hover:bg-black/65"
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
+            className={cn(
+              "absolute z-30 flex items-center gap-2 text-sm text-white/90",
+              theme === "default" &&
+                "left-4 top-4 rounded-full bg-black/45 px-4 py-2 backdrop-blur-md hover:bg-black/65",
+              theme === "marquee" &&
+                "left-6 top-6 border border-accent/60 px-4 py-2 uppercase tracking-[0.18em] text-[11px] text-accent hover:bg-accent hover:text-background",
+              theme === "pulse" &&
+                "left-5 top-5 h-12 w-12 justify-center rounded-full border-2 border-accent bg-black/40 hover:bg-accent hover:text-background",
+            )}
+            {...backMotionFor(theme)}
             onClick={() => {
               void saveProgress();
               exit();
             }}
           >
-            <ArrowLeft size={16} /> Back
+            <ArrowLeft size={theme === "pulse" ? 20 : 16} />
+            {theme !== "pulse" && "Back"}
           </motion.button>
         )}
         {controlsVisible && (
           <motion.div
-            className="absolute inset-x-0 bottom-0 z-30 bg-gradient-to-t from-black/90 to-transparent px-4 pb-3 pt-10"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            className={cn(
+              "absolute inset-x-0 bottom-0 z-30",
+              theme === "default" && "bg-gradient-to-t from-black/90 to-transparent px-4 pb-3 pt-10",
+              theme === "marquee" && "border-t border-accent/30 bg-black/85 px-6 pb-5 pt-4",
+              theme === "pulse" && "bg-gradient-to-t from-[#031018] via-[#031018]/90 to-transparent px-5 pb-6 pt-12",
+            )}
+            initial={{ opacity: 0, y: theme === "marquee" ? 24 : 0 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: theme === "pulse" ? 20 : 0 }}
+            transition={{ duration: theme === "pulse" ? 0.28 : 0.2 }}
             onMouseEnter={() => {
               controlsHoveredRef.current = true;
             }}
@@ -519,8 +547,10 @@ export function PlayerPage() {
               scheduleHideControls();
             }}
           >
-            <div className="mb-2 text-right">
-              <p className="truncate text-sm text-white/80">{session.title}</p>
+            <div className={cn("mb-2", theme === "marquee" ? "text-left" : "text-right")}>
+              <p className={cn("truncate text-white/80", theme === "marquee" ? "theme-title text-base" : "text-sm")}>
+                {session.title}
+              </p>
             </div>
 
             {isEmbedded && (
@@ -542,7 +572,10 @@ export function PlayerPage() {
                   </span>
                   <div
                     ref={seekBarRef}
-                    className="group relative flex h-5 flex-1 cursor-grab items-center active:cursor-grabbing select-none touch-none"
+                    className={cn(
+                      "group relative flex flex-1 cursor-grab items-center active:cursor-grabbing select-none touch-none",
+                      theme === "pulse" ? "h-8" : "h-5",
+                    )}
                     onPointerDown={onSeekPointerDown}
                     onPointerMove={onSeekPointerMove}
                     onPointerUp={onSeekPointerUp}
@@ -553,13 +586,26 @@ export function PlayerPage() {
                     aria-valuemax={Math.floor(duration) || 0}
                     aria-valuenow={Math.floor(currentTime)}
                   >
-                    <div className="relative h-1.5 w-full rounded-full bg-white/20 transition-[height] group-hover:h-2">
+                    <div
+                      className={cn(
+                        "relative w-full bg-white/20",
+                        theme === "default" && "h-1.5 rounded-full transition-[height] group-hover:h-2",
+                        theme === "marquee" && "h-px bg-accent/30",
+                        theme === "pulse" && "h-2.5 rounded-full",
+                      )}
+                    >
                       <div
-                        className="h-full rounded-full bg-accent"
+                        className={cn("h-full bg-accent", theme === "default" && "rounded-full", theme === "pulse" && "rounded-full")}
                         style={{ width: `${progressPct}%` }}
                       />
                       <div
-                        className="absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow-md opacity-0 group-hover:opacity-100 group-active:opacity-100"
+                        className={cn(
+                          "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 shadow-md",
+                          theme === "default" &&
+                            "h-3.5 w-3.5 rounded-full bg-white opacity-0 group-hover:opacity-100 group-active:opacity-100",
+                          theme === "marquee" && "h-4 w-2 rounded-none bg-accent",
+                          theme === "pulse" && "h-6 w-6 rounded-full border-2 border-white bg-accent",
+                        )}
                         style={{ left: `${progressPct}%` }}
                       />
                     </div>
@@ -569,37 +615,55 @@ export function PlayerPage() {
                   </span>
                 </div>
 
-                <div className="flex flex-wrap items-center justify-center gap-5">
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    onClick={togglePlay}
-                    className="text-white"
-                  >
-                    {playing ? <Pause size={28} /> : <Play size={28} fill="white" />}
-                  </motion.button>
-                  <div className="flex items-center gap-2">
-                    <button type="button" onClick={() => setMuted(!muted)}>
-                      {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-                    </button>
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={volume}
-                      onChange={(e) => setVolume(Number(e.target.value))}
-                      className={cn("w-24 accent-accent")}
-                    />
+                <div
+                  className={cn(
+                    "flex flex-wrap items-center gap-5",
+                    theme === "default" && "justify-center",
+                    theme !== "default" && "justify-between",
+                  )}
+                >
+                  <div className="flex items-center gap-4">
+                    <motion.button
+                      whileHover={{ scale: theme === "pulse" ? 1.16 : 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      onClick={togglePlay}
+                      className={cn(
+                        "text-white",
+                        theme === "pulse" && "rounded-full bg-accent p-3 text-background",
+                        theme === "marquee" && "border border-accent/50 px-3 py-1 text-accent",
+                      )}
+                    >
+                      {playing ? (
+                        <Pause size={theme === "pulse" ? 34 : 28} />
+                      ) : (
+                        <Play size={theme === "pulse" ? 34 : 28} fill={theme === "pulse" ? "currentColor" : "white"} />
+                      )}
+                    </motion.button>
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => setMuted(!muted)}>
+                        {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                      </button>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={volume}
+                        onChange={(e) => setVolume(Number(e.target.value))}
+                        className={cn("accent-accent", theme === "pulse" ? "w-36" : "w-24")}
+                      />
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => subtitleInputRef.current?.click()}
-                    className="flex items-center gap-2 text-sm text-white/80 hover:text-white"
-                    title="Choose an SRT or VTT subtitle file"
-                  >
-                    <Captions size={18} /> Add subtitles
-                  </button>
-                  {embeddableSubs.length > 0 && (
+                  {theme === "default" && (
+                    <button
+                      type="button"
+                      onClick={() => subtitleInputRef.current?.click()}
+                      className="flex items-center gap-2 text-sm text-white/80 hover:text-white"
+                      title="Choose an SRT or VTT subtitle file"
+                    >
+                      <Captions size={18} /> Add subtitles
+                    </button>
+                  )}
+                  {theme === "default" && embeddableSubs.length > 0 && (
                     <select
                       value={activeSubIndex}
                       onChange={(e) => setActiveSubIndex(Number(e.target.value))}
@@ -614,20 +678,65 @@ export function PlayerPage() {
                       ))}
                     </select>
                   )}
-                  {hasSubtitles && embeddableSubs.length === 0 && (
+                  {theme === "default" && hasSubtitles && embeddableSubs.length === 0 && (
                     <span className="text-xs text-white/60">
                       {session.subtitles.length} subtitle
                       {session.subtitles.length === 1 ? "" : "s"} (mpv only)
                     </span>
                   )}
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    type="button"
-                    className="ml-auto text-white/80 hover:text-white"
-                    onClick={() => void toggleFullscreen()}
-                  >
-                    <Maximize size={20} />
-                  </motion.button>
+                  {theme === "default" ? (
+                    <motion.button
+                      whileHover={{ scale: 1.1 }}
+                      type="button"
+                      className="text-white/80 hover:text-white"
+                      onClick={() => void toggleFullscreen()}
+                    >
+                      <Maximize size={20} />
+                    </motion.button>
+                  ) : (
+                    <div className="flex items-center gap-4">
+                      <button
+                        type="button"
+                        onClick={() => subtitleInputRef.current?.click()}
+                        className={cn(
+                          "flex items-center gap-2 text-sm text-white/80 hover:text-white",
+                          theme === "marquee" && "uppercase tracking-wider text-[11px]",
+                        )}
+                        title="Choose an SRT or VTT subtitle file"
+                      >
+                        <Captions size={18} /> Add subtitles
+                      </button>
+                      {embeddableSubs.length > 0 && (
+                        <select
+                          value={activeSubIndex}
+                          onChange={(e) => setActiveSubIndex(Number(e.target.value))}
+                          className="text-sm bg-white/10 text-white rounded-lg px-2 py-1 border border-white/20"
+                          aria-label="Subtitle track"
+                        >
+                          <option value={-1}>Subtitles off</option>
+                          {embeddableSubs.map((sub, index) => (
+                            <option key={sub.path} value={index}>
+                              {sub.label}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {hasSubtitles && embeddableSubs.length === 0 && (
+                        <span className="text-xs text-white/60">
+                          {session.subtitles.length} subtitle
+                          {session.subtitles.length === 1 ? "" : "s"} (mpv only)
+                        </span>
+                      )}
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        type="button"
+                        className="text-white/80 hover:text-white"
+                        onClick={() => void toggleFullscreen()}
+                      >
+                        <Maximize size={theme === "pulse" ? 24 : 20} />
+                      </motion.button>
+                    </div>
+                  )}
                 </div>
               </>
             )}
@@ -635,6 +744,6 @@ export function PlayerPage() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }

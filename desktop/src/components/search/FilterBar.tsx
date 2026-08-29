@@ -1,12 +1,14 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { SlidersHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTheme } from "@/lib/theme/theme";
 
 export interface FilterState {
   watchStatus: string;
   collectionStatus: string;
   sort: string;
   genres: string[];
+  hideRemoved: boolean;
 }
 
 interface FilterBarProps {
@@ -50,11 +52,13 @@ export function FilterBar({
   showCollectionFilter,
   resultCount,
 }: FilterBarProps) {
+  const { theme } = useTheme();
   const activeCount =
     (filters.watchStatus !== "all" ? 1 : 0) +
     (showCollectionFilter && filters.collectionStatus !== "all" ? 1 : 0) +
     (filters.sort !== "title_asc" ? 1 : 0) +
-    filters.genres.length;
+    filters.genres.length +
+    (filters.hideRemoved ? 1 : 0);
 
   const clearAll = () =>
     onChange({
@@ -62,6 +66,7 @@ export function FilterBar({
       collectionStatus: "all",
       sort: "title_asc",
       genres: [],
+      hideRemoved: false,
     });
 
   return (
@@ -72,7 +77,8 @@ export function FilterBar({
             type="button"
             onClick={onToggle}
             className={cn(
-              "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition-colors",
+              "inline-flex items-center gap-2 border px-3.5 py-1.5 text-sm transition-colors",
+              theme === "pulse" ? "rounded-full px-4 py-2" : "rounded-full",
               open || activeCount > 0
                 ? "border-accent/40 bg-accent/15 text-white"
                 : "border-white/10 bg-surface text-muted hover:text-white hover:bg-white/5",
@@ -87,6 +93,19 @@ export function FilterBar({
             )}
           </button>
           {resultCount && <span className="text-sm text-muted">{resultCount}</span>}
+          <label className="flex items-center gap-2 text-sm text-muted cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={Boolean(filters.hideRemoved)}
+              onChange={(e) => {
+                const hideRemoved = e.target.checked;
+                localStorage.setItem("watch-hide-removed", hideRemoved ? "1" : "0");
+                onChange({ ...filters, hideRemoved });
+              }}
+              className="rounded"
+            />
+            Hide removed
+          </label>
         </div>
         {activeCount > 0 && (
           <button type="button" onClick={clearAll} className="text-xs text-muted hover:text-white">
@@ -202,6 +221,7 @@ function ChipRow({
 
 export function applyShowFilters(shows: import("@/lib/api/tauri").ShowItem[], filters: FilterState) {
   let result = [...shows];
+  if (filters.hideRemoved) result = result.filter((s) => !s.removed);
   if (filters.watchStatus === "watched") {
     result = result.filter((s) => s.owned_count > 0 && s.unwatched_count === 0);
   }
@@ -220,6 +240,7 @@ export function applyShowFilters(shows: import("@/lib/api/tauri").ShowItem[], fi
 
 export function applyMovieFilters(movies: import("@/lib/api/tauri").MovieItem[], filters: FilterState) {
   let result = [...movies];
+  if (filters.hideRemoved) result = result.filter((m) => !m.removed);
   if (filters.watchStatus === "watched") result = result.filter((m) => m.watch_status === "watched");
   if (filters.watchStatus === "unwatched") result = result.filter((m) => m.watch_status === "unwatched");
   if (filters.watchStatus === "in_progress") result = result.filter((m) => m.watch_status === "in_progress");
@@ -235,4 +256,16 @@ export const defaultFilters: FilterState = {
   collectionStatus: "all",
   sort: "title_asc",
   genres: [],
+  hideRemoved: false,
 };
+
+export function loadFilters(storageKey: string): FilterState {
+  const hideRemoved = localStorage.getItem("watch-hide-removed") === "1";
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (!saved) return { ...defaultFilters, hideRemoved };
+    return { ...defaultFilters, hideRemoved, ...JSON.parse(saved) };
+  } catch {
+    return { ...defaultFilters, hideRemoved };
+  }
+}

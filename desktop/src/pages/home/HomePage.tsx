@@ -31,10 +31,11 @@ export function HomePage() {
       api.getIncompleteShows("tv", true),
       api.getMovies(),
     ]);
-    setContinueItems(cw);
-    setIncompleteAnime(anime.slice(0, 12));
-    setIncompleteTv(tv.slice(0, 12));
-    setRecentMovies(movies.slice(0, 12));
+    const hideRemoved = localStorage.getItem("watch-hide-removed") === "1";
+    setContinueItems(hideRemoved ? cw.filter((item) => !item.removed) : cw);
+    setIncompleteAnime((hideRemoved ? anime.filter((show) => !show.removed) : anime).slice(0, 12));
+    setIncompleteTv((hideRemoved ? tv.filter((show) => !show.removed) : tv).slice(0, 12));
+    setRecentMovies((hideRemoved ? movies.filter((movie) => !movie.removed) : movies).slice(0, 12));
   }, []);
 
   useEffect(() => {
@@ -78,7 +79,7 @@ export function HomePage() {
       )}
       {continueItems.length > 0 && (
         <section>
-          <h2 className="text-xl font-semibold mb-4">Continue Watching</h2>
+          <h2 className="text-xl font-semibold mb-4 theme-title">Continue Watching</h2>
           <div className="flex gap-4 overflow-x-auto pb-2">
             {continueItems.map((item) => {
               const pct =
@@ -127,7 +128,7 @@ export function HomePage() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold">Have to Watch · Anime</h2>
+              <h2 className="text-xl font-semibold theme-title">Have to Watch · Anime</h2>
               <p className="text-sm text-muted">Episodes you haven&apos;t finished watching</p>
             </div>
             <AnimatedButton variant="ghost" size="sm" onClick={() => navigate("/anime")}>
@@ -152,7 +153,7 @@ export function HomePage() {
         <section>
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xl font-semibold">Have to Watch · Series</h2>
+              <h2 className="text-xl font-semibold theme-title">Have to Watch · Series</h2>
               <p className="text-sm text-muted">Episodes you haven&apos;t finished watching</p>
             </div>
             <AnimatedButton variant="ghost" size="sm" onClick={() => navigate("/tv")}>
@@ -176,7 +177,7 @@ export function HomePage() {
       {recentMovies.length > 0 && (
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Movies</h2>
+            <h2 className="text-xl font-semibold theme-title">Movies</h2>
             <AnimatedButton variant="ghost" size="sm" onClick={() => navigate("/movies")}>
               View all
             </AnimatedButton>

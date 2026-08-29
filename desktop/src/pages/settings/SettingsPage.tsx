@@ -6,9 +6,13 @@ import { notifyNewFiles, notifyLibraryUpdated } from "@/lib/events";
 import { clearPlayerSession } from "@/lib/playback/playerSession";
 import { AnimatedButton } from "@/components/ui/AnimatedButton";
 import { FolderPlus, Trash2, Folder } from "lucide-react";
+import { THEME_META, useTheme } from "@/lib/theme/theme";
+import { cn } from "@/lib/utils";
+import { clearSetupComplete } from "@/lib/setup";
 
 export function SettingsPage() {
   const navigate = useNavigate();
+  const { theme: themeId, setTheme } = useTheme();
   const [settings, setSettings] = useState<Settings>({
     library_root: "",
     library_roots: [""],
@@ -106,7 +110,28 @@ export function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-lg pb-12">
-      <h1 className="mb-8 text-2xl font-bold">Settings</h1>
+      <h1 className="mb-8 text-2xl font-bold theme-title">Settings</h1>
+
+      <label className="mb-2 block text-sm text-muted">Appearance</label>
+      <div className="mb-8 grid grid-cols-3 gap-2">
+        {THEME_META.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setTheme(item.id)}
+            className={cn(
+              "border px-3 py-3 text-left transition-colors",
+              themeId === "pulse" ? "rounded-2xl" : "rounded-xl",
+              themeId === item.id
+                ? "border-accent bg-accent/15"
+                : "border-white/8 bg-surface hover:bg-surface-hover",
+            )}
+          >
+            <p className="text-sm font-semibold">{item.name}</p>
+            <p className="mt-1 text-[11px] leading-snug text-muted">{item.blurb}</p>
+          </button>
+        ))}
+      </div>
 
       <label className="mb-2 block text-sm text-muted">Library folders</label>
       <div className="space-y-2">
@@ -208,6 +233,7 @@ export function SettingsPage() {
                   try {
                     await api.resetApp();
                     clearPlayerSession();
+                    clearSetupComplete();
                     notifyLibraryUpdated();
                     setSettings(await api.getSettings());
                     setResetOpen(false);
