@@ -1,0 +1,57 @@
+# Dependencies and caches
+node_modules/
+.npm/
+
+# Desktop (Tauri / Vite)
+desktop/dist/
+desktop/dist-ssr/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/schemas/
+
+# Android
+mobile/.gradle/
+mobile/.kotlin/
+mobile/build/
+mobile/app/build/
+mobile/captures/
+mobile/.cxx/
+mobile/.externalNativeBuild/
+mobile/local.properties
+mobile/.idea/
+
+# Binaries — use GitHub Releases instead of git
+*.exe
+*.msi
+*.apk
+*.aab
+*.dmg
+*.app
+
+# Secrets and machine-specific
+.env
+.env.*
+*.local
+*.keystore
+*.jks
+
+# Cursor / AI plans and prompts — never upload
+.cursor/
+**/.cursor/
+**/*.plan.md
+AGENTS.md
+.cursorrules
+.cursorignore
+.claude/
+.github/copilot-instructions.md
+
+# Editors
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.suo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
