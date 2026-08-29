@@ -615,20 +615,14 @@ export function PlayerPage() {
                   </span>
                 </div>
 
-                <div
-                  className={cn(
-                    "flex flex-wrap items-center gap-5",
-                    theme === "default" && "justify-center",
-                    theme !== "default" && "justify-between",
-                  )}
-                >
-                  <div className="flex items-center gap-4">
+                <div className="flex w-full items-center justify-between gap-6">
+                  <div className="flex min-w-0 items-center gap-5">
                     <motion.button
                       whileHover={{ scale: theme === "pulse" ? 1.16 : 1.1 }}
                       whileTap={{ scale: 0.9 }}
                       onClick={togglePlay}
                       className={cn(
-                        "text-white",
+                        "shrink-0 text-white",
                         theme === "pulse" && "rounded-full bg-accent p-3 text-background",
                         theme === "marquee" && "border border-accent/50 px-3 py-1 text-accent",
                       )}
@@ -639,8 +633,8 @@ export function PlayerPage() {
                         <Play size={theme === "pulse" ? 34 : 28} fill={theme === "pulse" ? "currentColor" : "white"} />
                       )}
                     </motion.button>
-                    <div className="flex items-center gap-2">
-                      <button type="button" onClick={() => setMuted(!muted)}>
+                    <div className="flex items-center gap-3">
+                      <button type="button" onClick={() => setMuted(!muted)} className="shrink-0">
                         {muted ? <VolumeX size={20} /> : <Volume2 size={20} />}
                       </button>
                       <input
@@ -649,94 +643,52 @@ export function PlayerPage() {
                         max={100}
                         value={volume}
                         onChange={(e) => setVolume(Number(e.target.value))}
-                        className={cn("accent-accent", theme === "pulse" ? "w-36" : "w-24")}
+                        className={cn("accent-accent", theme === "pulse" ? "w-40" : "w-32")}
                       />
                     </div>
                   </div>
-                  {theme === "default" && (
+                  <div className="flex shrink-0 items-center gap-5">
                     <button
                       type="button"
                       onClick={() => subtitleInputRef.current?.click()}
-                      className="flex items-center gap-2 text-sm text-white/80 hover:text-white"
+                      className={cn(
+                        "flex items-center gap-2 text-sm text-white/80 hover:text-white",
+                        theme === "marquee" && "uppercase tracking-wider text-[11px]",
+                      )}
                       title="Choose an SRT or VTT subtitle file"
                     >
                       <Captions size={18} /> Add subtitles
                     </button>
-                  )}
-                  {theme === "default" && embeddableSubs.length > 0 && (
-                    <select
-                      value={activeSubIndex}
-                      onChange={(e) => setActiveSubIndex(Number(e.target.value))}
-                      className="text-sm bg-white/10 text-white rounded-lg px-2 py-1 border border-white/20"
-                      aria-label="Subtitle track"
-                    >
-                      <option value={-1}>Subtitles off</option>
-                      {embeddableSubs.map((sub, index) => (
-                        <option key={sub.path} value={index}>
-                          {sub.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  {theme === "default" && hasSubtitles && embeddableSubs.length === 0 && (
-                    <span className="text-xs text-white/60">
-                      {session.subtitles.length} subtitle
-                      {session.subtitles.length === 1 ? "" : "s"} (mpv only)
-                    </span>
-                  )}
-                  {theme === "default" ? (
+                    {embeddableSubs.length > 0 && (
+                      <select
+                        value={activeSubIndex}
+                        onChange={(e) => setActiveSubIndex(Number(e.target.value))}
+                        className="text-sm bg-white/10 text-white rounded-lg px-2 py-1 border border-white/20"
+                        aria-label="Subtitle track"
+                      >
+                        <option value={-1}>Subtitles off</option>
+                        {embeddableSubs.map((sub, index) => (
+                          <option key={sub.path} value={index}>
+                            {sub.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    {hasSubtitles && embeddableSubs.length === 0 && (
+                      <span className="text-xs text-white/60">
+                        {session.subtitles.length} subtitle
+                        {session.subtitles.length === 1 ? "" : "s"} (mpv only)
+                      </span>
+                    )}
                     <motion.button
                       whileHover={{ scale: 1.1 }}
                       type="button"
                       className="text-white/80 hover:text-white"
                       onClick={() => void toggleFullscreen()}
                     >
-                      <Maximize size={20} />
+                      <Maximize size={theme === "pulse" ? 24 : 20} />
                     </motion.button>
-                  ) : (
-                    <div className="flex items-center gap-4">
-                      <button
-                        type="button"
-                        onClick={() => subtitleInputRef.current?.click()}
-                        className={cn(
-                          "flex items-center gap-2 text-sm text-white/80 hover:text-white",
-                          theme === "marquee" && "uppercase tracking-wider text-[11px]",
-                        )}
-                        title="Choose an SRT or VTT subtitle file"
-                      >
-                        <Captions size={18} /> Add subtitles
-                      </button>
-                      {embeddableSubs.length > 0 && (
-                        <select
-                          value={activeSubIndex}
-                          onChange={(e) => setActiveSubIndex(Number(e.target.value))}
-                          className="text-sm bg-white/10 text-white rounded-lg px-2 py-1 border border-white/20"
-                          aria-label="Subtitle track"
-                        >
-                          <option value={-1}>Subtitles off</option>
-                          {embeddableSubs.map((sub, index) => (
-                            <option key={sub.path} value={index}>
-                              {sub.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                      {hasSubtitles && embeddableSubs.length === 0 && (
-                        <span className="text-xs text-white/60">
-                          {session.subtitles.length} subtitle
-                          {session.subtitles.length === 1 ? "" : "s"} (mpv only)
-                        </span>
-                      )}
-                      <motion.button
-                        whileHover={{ scale: 1.1 }}
-                        type="button"
-                        className="text-white/80 hover:text-white"
-                        onClick={() => void toggleFullscreen()}
-                      >
-                        <Maximize size={theme === "pulse" ? 24 : 20} />
-                      </motion.button>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </>
             )}
