@@ -23,6 +23,7 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState("");
+  const [keyError, setKeyError] = useState("");
   const [resetOpen, setResetOpen] = useState(false);
   const [resetConfirm, setResetConfirm] = useState("");
   const [resetting, setResetting] = useState(false);
@@ -54,17 +55,25 @@ export function SettingsPage() {
 
   const save = async () => {
     const libraryRoots = roots.filter((root) => root.trim());
-    await api.saveSettings({
-      ...settings,
-      library_root: libraryRoots[0] ?? "",
-      library_roots: libraryRoots,
-    });
-    if (pin.length === 6 && /^\d{6}$/.test(pin)) {
-      await api.setMobilePin(pin);
-      setPinError("");
+    const tmdb_api_key = settings.tmdb_api_key.trim();
+    setKeyError("");
+    try {
+      await api.saveSettings({
+        ...settings,
+        tmdb_api_key,
+        library_root: libraryRoots[0] ?? "",
+        library_roots: libraryRoots,
+      });
+      setSettings({ ...settings, tmdb_api_key, library_root: libraryRoots[0] ?? "", library_roots: libraryRoots });
+      if (pin.length === 6 && /^\d{6}$/.test(pin)) {
+        await api.setMobilePin(pin);
+        setPinError("");
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1600);
+    } catch (e) {
+      setKeyError(String(e));
     }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1600);
   };
 
   const savePin = async (value: string) => {
@@ -96,10 +105,11 @@ export function SettingsPage() {
     setStatus("");
     try {
       const result = await api.scanLibrary();
+      notifyLibraryUpdated();
       if (result.new_files.length > 0) {
         notifyNewFiles(result.new_files);
       } else {
-        setStatus("No new files");
+        setStatus("Library refreshed");
       }
     } catch (e) {
       setStatus(String(e));
@@ -177,9 +187,17 @@ export function SettingsPage() {
         type="password"
         className="w-full rounded-xl border border-white/8 bg-surface px-4 py-3 text-sm"
         value={settings.tmdb_api_key}
-        onChange={(e) => setSettings({ ...settings, tmdb_api_key: e.target.value })}
+        onChange={(e) => {
+          setKeyError("");
+          setSettings({ ...settings, tmdb_api_key: e.target.value });
+        }}
         autoComplete="off"
+        placeholder="API Key (v3) from themoviedb.org"
       />
+      <p className="mt-1 text-xs text-muted">
+        Use the API Key (v3), not the Read Access Token. Get one free at themoviedb.org/settings/api
+      </p>
+      {keyError && <p className="mt-2 text-sm text-red-300 break-words">{keyError}</p>}
 
       <label className="mb-2 mt-8 block text-sm text-muted">Phone PIN</label>
       <div className="flex items-center gap-2">

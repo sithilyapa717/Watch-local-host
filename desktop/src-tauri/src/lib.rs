@@ -35,6 +35,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
+            validate_tmdb_key_cmd,
             reset_app_cmd,
             scan_library_cmd,
             skip_new_files,

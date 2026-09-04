@@ -15,6 +15,12 @@ interface NewFilesDialogProps {
   error?: string | null;
 }
 
+function splitFailure(entry: string): { name: string; reason: string } {
+  const idx = entry.indexOf(": ");
+  if (idx === -1) return { name: entry, reason: "" };
+  return { name: entry.slice(0, idx), reason: entry.slice(idx + 2) };
+}
+
 export function NewFilesDialog({
   open,
   files,
@@ -28,6 +34,10 @@ export function NewFilesDialog({
   const showResult = result && (result.organized > 0 || result.failed.length > 0);
   const canRetry = Boolean(error || (result && result.failed.length > 0));
   const allSucceeded = result && result.organized === files.length && result.failed.length === 0;
+  const keyHint = Boolean(
+    error?.toLowerCase().includes("tmdb") ||
+      result?.failed.some((f) => f.toLowerCase().includes("tmdb api key") || f.toLowerCase().includes("read access token")),
+  );
 
   return (
     <AnimatePresence>
@@ -54,8 +64,15 @@ export function NewFilesDialog({
             {error && (
               <div className="flex gap-2 items-start p-3 mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span>{error}</span>
+                <span className="break-words">{error}</span>
               </div>
+            )}
+
+            {keyHint && (
+              <p className="mb-4 text-xs text-amber-200/90">
+                Fix this in Settings → TMDB API key. Use the <strong>API Key (v3)</strong> from{" "}
+                themoviedb.org/settings/api — not the Read Access Token.
+              </p>
             )}
 
             {showResult && (
@@ -66,12 +83,24 @@ export function NewFilesDialog({
                 {result!.failed.length > 0 && (
                   <div className="text-red-300">
                     <p>{result!.failed.length} failed:</p>
-                    <ul className="max-h-24 overflow-y-auto mt-1 space-y-0.5 text-xs text-muted">
-                      {result!.failed.slice(0, 5).map((f) => (
-                        <li key={f} className="truncate">• {f}</li>
-                      ))}
-                      {result!.failed.length > 5 && (
-                        <li>…and {result!.failed.length - 5} more</li>
+                    <ul className="max-h-36 overflow-y-auto mt-1 space-y-2 text-xs">
+                      {result!.failed.slice(0, 8).map((f) => {
+                        const { name, reason } = splitFailure(f);
+                        return (
+                          <li key={f} className="rounded-lg bg-black/20 px-2 py-1.5">
+                            <p className="truncate text-muted" title={name}>
+                              {name}
+                            </p>
+                            {reason && (
+                              <p className="mt-0.5 break-words text-red-300/90" title={reason}>
+                                {reason}
+                              </p>
+                            )}
+                          </li>
+                        );
+                      })}
+                      {result!.failed.length > 8 && (
+                        <li className="text-muted">…and {result!.failed.length - 8} more</li>
                       )}
                     </ul>
                   </div>

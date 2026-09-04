@@ -9,12 +9,13 @@ export function LoadingScreen() {
   const bytePct =
     job.totalBytes > 0 ? Math.min(100, Math.round((job.downloadedBytes / job.totalBytes) * 100)) : null;
   const pct = filePct ?? bytePct ?? 0;
-  const amount =
+
+  const downloadedLabel =
     job.downloadedBytes > 0
-      ? formatBytes(job.downloadedBytes)
-      : job.total > 0
-        ? `${pct}%`
-        : null;
+      ? job.totalBytes > 0
+        ? `${formatBytes(job.downloadedBytes)} / ${formatBytes(job.totalBytes)}`
+        : formatBytes(job.downloadedBytes)
+      : null;
 
   return (
     <AnimatePresence>
@@ -34,10 +35,22 @@ export function LoadingScreen() {
           >
             <Loader2 className="mx-auto mb-4 animate-spin text-accent" size={36} />
             <h2 className="text-lg font-semibold">{job.title || "Working…"}</h2>
+            {job.detail && (
+              <p className="mt-2 truncate text-sm text-muted" title={job.detail}>
+                {job.detail}
+              </p>
+            )}
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
               <div className="h-full bg-accent transition-all duration-300" style={{ width: `${pct}%` }} />
             </div>
-            {amount && <p className="mt-3 text-sm font-medium tabular-nums">{amount}</p>}
+            <div className="mt-3 space-y-1 text-sm tabular-nums">
+              {(filePct != null || bytePct != null) && (
+                <p className="font-medium">{pct}%</p>
+              )}
+              {downloadedLabel && (
+                <p className="text-muted">{downloadedLabel}</p>
+              )}
+            </div>
           </motion.div>
         </motion.div>
       )}

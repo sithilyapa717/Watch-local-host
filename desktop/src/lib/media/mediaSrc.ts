@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { api } from "@/lib/api/tauri";
 
 type ImageSize = "w342" | "w780";
 
@@ -8,11 +7,17 @@ function isFilesystemPath(path: string): boolean {
   return /^[a-zA-Z]:[\\/]/.test(path) || path.startsWith("\\\\");
 }
 
-function tmdbUrl(path: string, size: ImageSize): string {
+export function tmdbUrl(path: string, size: ImageSize): string {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return `https://image.tmdb.org/t/p/${size}${normalized}`;
 }
 
+/**
+ * Resolve poster/backdrop paths for the UI.
+ * TMDB relative paths always use the CDN — local asset:// URLs often fail
+ * (403) on Windows release builds when AppData paths are not in scope.
+ * Local cache is still used by the mobile API.
+ */
 export function useResolvedImageSrc(
   path?: string | null,
   size: ImageSize = "w342",
@@ -20,42 +25,22 @@ export function useResolvedImageSrc(
   const [src, setSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function resolve() {
-      if (!path) {
-        setSrc(null);
-        return;
-      }
-
-      if (path.startsWith("http://") || path.startsWith("https://")) {
-        setSrc(path);
-        return;
-      }
-
-      if (isFilesystemPath(path)) {
-        setSrc(convertFileSrc(path));
-        return;
-      }
-
-      try {
-        const local = await api.getPosterPath(path);
-        if (cancelled) return;
-        if (local) {
-          setSrc(convertFileSrc(local));
-          return;
-        }
-      } catch {
-        // Fall through to the TMDB URL.
-      }
-
-      if (!cancelled) setSrc(tmdbUrl(path, size));
+    if (!path) {
+      setSrc(null);
+      return;
     }
 
-    void resolve();
-    return () => {
-      cancelled = true;
-    };
+    if (path.startsWith("http://") || path.startsWith("https://")) {
+      setSrc(path);
+      return;
+    }
+
+    if (isFilesystemPath(path)) {
+      setSrc(convertFileSrc(path));
+      return;
+    }
+
+    setSrc(tmdbUrl(path, size));
   }, [path, size]);
 
   return src;

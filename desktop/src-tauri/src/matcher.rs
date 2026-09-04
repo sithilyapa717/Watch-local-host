@@ -111,12 +111,25 @@ fn is_junk_token(token: &str) -> bool {
             | "extended"
             | "unrated"
             | "directors"
-            | "cut"
             | "remux"
             | "imax"
             | "hc"
             | "sub"
             | "subs"
+            | "subtitle"
+            | "subtitles"
+            | "sinhala"
+            | "tamil"
+            | "hindi"
+            | "english"
+            | "eng"
+            | "dub"
+            | "dubbed"
+            | "baiscopelk"
+            | "piratelk"
+            | "tamilmv"
+            | "com"
+            | "www"
             | "mx"
             | "aac5"
     )
@@ -126,8 +139,24 @@ pub fn parse_movie(filename: &str) -> ParsedMovie {
     let name = filename.rsplit(['/', '\\']).next().unwrap_or(filename);
     let mut stem = strip_video_extensions(name);
     stem = Regex::new(r"\[[^\]]*\]").unwrap().replace_all(&stem, " ").into_owned();
-    stem = Regex::new(r"\([^)]*\)").unwrap().replace_all(&stem, " ").into_owned();
+    // Keep (YYYY) year markers; strip other parenthetical groups.
+    stem = Regex::new(r"\([^)]*\)")
+        .unwrap()
+        .replace_all(&stem, |caps: &regex::Captures| {
+            let inner = &caps[0][1..caps[0].len() - 1];
+            if Regex::new(r"^(19|20)\d{2}$").unwrap().is_match(inner) {
+                format!(" {inner} ")
+            } else {
+                " ".to_string()
+            }
+        })
+        .into_owned();
     stem = Regex::new(r"(?i)\b(?:5\.1|7\.1|2\.0|6\.1)\b").unwrap().replace_all(&stem, " ").into_owned();
+    // Strip domain-like site tags: baiscopelk.com, pirateLK.com
+    stem = Regex::new(r"(?i)\b[\w-]+\.(com|net|org|lk|info)\b")
+        .unwrap()
+        .replace_all(&stem, " ")
+        .into_owned();
     stem = stem.replace(['.', '_', '-', '+'], " ");
     stem = split_camel_case(&stem);
 
@@ -277,13 +306,21 @@ mod tests {
         assert_eq!(c.title, "Dog Man");
         assert_eq!(c.year, Some(2025));
 
-        let d = parse_movie("Eddington 2025 720p 10bit _ 6CH x265 HEVC-PSA.mkv");
-        assert_eq!(d.title, "Eddington");
-        assert_eq!(d.year, Some(2025));
+        let e = parse_movie("Eddington 2025 720p 10bit _ 6CH x265 HEVC-PSA.mkv");
+        assert_eq!(e.title, "Eddington");
+        assert_eq!(e.year, Some(2025));
 
-        let e = parse_movie("Enola.Holmes.2.2022.720p.NF.WEBRip.900MB.x264-GalaxyRG.mkv");
-        assert_eq!(e.title, "Enola Holmes 2");
-        assert_eq!(e.year, Some(2022));
+        let f = parse_movie("Enola.Holmes.2.2022.720p.NF.WEBRip.900MB.x264-GalaxyRG.mkv");
+        assert_eq!(f.title, "Enola Holmes 2");
+        assert_eq!(f.year, Some(2022));
+
+        let g = parse_movie("The.Batman.2022.1080p.sinhala.sub-baiscopelk.com.mkv");
+        assert_eq!(g.title, "The Batman");
+        assert_eq!(g.year, Some(2022));
+
+        let h = parse_movie("Final.Cut.2022.720p.BluRay.x264.mp4");
+        assert_eq!(h.title, "Final Cut");
+        assert_eq!(h.year, Some(2022));
     }
 
     #[test]

@@ -20,10 +20,46 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: https://image.tmdb.org; media-src 'self' asset: http://asset.localhost https://asset.localhost blob:;",
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost https://asset.localhost data: https://image.tmdb.org; media-src 'self' asset: http://asset.localhost https://asset.localhost blob:; connect-src 'self' ipc: http://ipc.localhost https://api.themoviedb.org https://image.tmdb.org;",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": {
+          "allow": [
+            "$APPLOCALDATA/**",
+            "$APPDATA/**",
+            "$HOME/**",
+            "$DOCUMENT/**",
+            "$DOWNLOAD/**",
+            "$DESKTOP/**",
+            "$RESOURCE/**",
+            "C:/**",
+            "D:/**",
+            "E:/**",
+            "F:/**",
+            "G:/**",
+            "H:/**",
+            "I:/**",
+            "J:/**",
+            "K:/**",
+            "L:/**",
+            "M:/**",
+            "N:/**",
+            "O:/**",
+            "P:/**",
+            "Q:/**",
+            "R:/**",
+            "S:/**",
+            "T:/**",
+            "U:/**",
+            "V:/**",
+            "W:/**",
+            "X:/**",
+            "Y:/**",
+            "Z:/**",
+            "**"
+          ],
+          "requireLiteralLeadingDot": false
+        }
       }
     }
   },

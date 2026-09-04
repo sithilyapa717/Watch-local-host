@@ -115,6 +115,7 @@ export interface CompletenessResponse {
 export const api = {
   getSettings: () => invoke<Settings>("get_settings"),
   saveSettings: (s: Settings) => invoke<void>("save_settings", { settings: s }),
+  validateTmdbKey: (apiKey: string) => invoke<void>("validate_tmdb_key_cmd", { apiKey }),
   resetApp: () => invoke<void>("reset_app_cmd"),
   scanLibrary: () => invoke<ScanResult>("scan_library_cmd"),
   skipNewFiles: (files: ScannedFile[]) => invoke<number[]>("skip_new_files", { files }),

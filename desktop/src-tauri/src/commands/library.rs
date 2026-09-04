@@ -12,6 +12,12 @@ pub async fn scan_library_cmd(app: AppHandle, state: State<'_, DbState>) -> Resu
         let result = scan_library(&db, &settings.library_roots, |current, detail| {
             emit_job(&app, "Scanning library", detail, current, current.max(1), 0, 0);
         });
+        if !settings.tmdb_api_key.is_empty() {
+            emit_job(&app, "Refreshing artwork", "Fetching missing posters…", 0, 1, 0, 0);
+            let _ = crate::tmdb::enrich_missing_artwork_public(&db, &settings.tmdb_api_key, |c, t, d, dl, tb| {
+                emit_job(&app, "Refreshing artwork", d, c, t, dl, tb);
+            });
+        }
         emit_job_done(&app);
         result
     })
@@ -132,6 +138,10 @@ pub async fn repair_library_shows_cmd(
             let locked = db.lock().map_err(|e| e.to_string())?;
             crate::tmdb::repair_library_shows(&locked, &settings.tmdb_api_key, &settings.library_roots)
         };
+        emit_job(&app, "Fixing library", "Fetching missing posters…", 1, 2, 0, 0);
+        let _ = crate::tmdb::enrich_missing_artwork_public(&db, &settings.tmdb_api_key, |c, t, d, dl, tb| {
+            emit_job(&app, "Fixing library", d, c, t, dl, tb);
+        });
         emit_job_done(&app);
         result
     })

@@ -7,14 +7,15 @@ use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::Duration;
 
 const TMDB_BASE: &str = "https://api.themoviedb.org/3";
 const TMDB_IMAGE: &str = "https://image.tmdb.org/t/p";
 
-thread_local! {
-    static IMAGE_BYTES: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
-}
+static IMAGE_DOWNLOADED: AtomicU64 = AtomicU64::new(0);
+static IMAGE_TOTAL: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Deserialize)]
 struct TmdbSearchResponse<T> {
@@ -110,6 +111,54 @@ pub struct TmdbSearchItem {
     pub poster_path: Option<String>,
 }
 
+fn normalize_api_key(api_key: &str) -> Result<String, String> {
+    let key = api_key.trim().to_string();
+    if key.is_empty() {
+        return Err("Add your TMDB API key in Settings first".to_string());
+    }
+    // Users often paste the v4 Read Access Token (JWT) instead of the v3 API key.
+    if key.starts_with("eyJ") {
+        return Err(
+            "That looks like a TMDB Read Access Token (v4). Use the API Key (v3) from themoviedb.org/settings/api"
+                .to_string(),
+        );
+    }
+    if key.len() < 10 {
+        return Err("TMDB API key looks too short — paste the API Key (v3) from Settings".to_string());
+    }
+    Ok(key)
+}
+
+pub fn normalize_api_key_public(api_key: &str) -> Result<String, String> {
+    normalize_api_key(api_key)
+}
+
+/// Quick authenticated ping so organize fails fast with a clear message.
+pub fn validate_tmdb_api_key(api_key: &str) -> Result<(), String> {
+    let key = normalize_api_key(api_key)?;
+    let client = tmdb_client()?;
+    let url = format!(
+        "{}/configuration?api_key={}",
+        TMDB_BASE,
+        urlencoding_encode(&key)
+    );
+    let _: serde_json::Value = tmdb_get(&client, &url)?;
+    Ok(())
+}
+
+fn api_key_query(api_key: &str) -> String {
+    urlencoding_encode(api_key.trim())
+}
+
+fn tmdb_client() -> Result<Client, String> {
+    Client::builder()
+        .user_agent("WatchApp/1.1 (desktop; local-library)")
+        .timeout(Duration::from_secs(45))
+        .connect_timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
 pub fn download_image(
     client: &Client,
     api_key: &str,
@@ -122,13 +171,22 @@ pub fn download_image(
     }
     let local = db.cache_dir().join(remote_path.trim_start_matches('/'));
     if local.exists() {
-        return Ok(());
+        if let Ok(meta) = std::fs::metadata(&local) {
+            let len = meta.len();
+            if len > 0 {
+                add_image_bytes(len, len);
+                return Ok(());
+            }
+        }
     }
     if let Some(parent) = local.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let url = format!("{}{}{}", TMDB_IMAGE, size, remote_path);
     let resp = client.get(&url).send().map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("Image download failed ({})", resp.status()));
+    }
     let expected = resp.content_length().unwrap_or(0);
     let bytes = resp.bytes().map_err(|e| e.to_string())?;
     let got = bytes.len() as u64;
@@ -139,18 +197,20 @@ pub fn download_image(
 }
 
 fn add_image_bytes(got: u64, expected: u64) {
-    IMAGE_BYTES.with(|c| {
-        let (downloaded, total) = c.get();
-        c.set((downloaded + got, total + expected));
-    });
+    IMAGE_DOWNLOADED.fetch_add(got, Ordering::Relaxed);
+    IMAGE_TOTAL.fetch_add(expected, Ordering::Relaxed);
 }
 
 fn image_bytes() -> (u64, u64) {
-    IMAGE_BYTES.with(|c| c.get())
+    (
+        IMAGE_DOWNLOADED.load(Ordering::Relaxed),
+        IMAGE_TOTAL.load(Ordering::Relaxed),
+    )
 }
 
 fn reset_image_bytes() {
-    IMAGE_BYTES.with(|c| c.set((0, 0)));
+    IMAGE_DOWNLOADED.store(0, Ordering::Relaxed);
+    IMAGE_TOTAL.store(0, Ordering::Relaxed);
 }
 
 pub fn organize_files(
@@ -160,10 +220,9 @@ pub fn organize_files(
     library_roots: &[String],
     mut on_progress: impl FnMut(usize, usize, &str, u64, u64),
 ) -> Result<OrganizeResult, String> {
-    if api_key.is_empty() {
-        return Err("Add your TMDB API key in Settings first".to_string());
-    }
-    let client = Client::new();
+    let api_key = normalize_api_key(api_key)?;
+    validate_tmdb_api_key(&api_key)?;
+    let client = tmdb_client()?;
     let mut organized = 0usize;
     let mut failed = Vec::new();
     let mut folder_show_cache: HashMap<String, i64> = HashMap::new();
@@ -175,21 +234,32 @@ pub fn organize_files(
         on_progress(index + 1, total, &file.filename, downloaded, total_bytes);
         let result = {
             let db = db.lock().map_err(|e| e.to_string())?;
-            organize_one(&client, &db, api_key, file, &mut folder_show_cache)
+            organize_one(&client, &db, &api_key, file, &mut folder_show_cache)
         };
         match result {
             Ok(()) => organized += 1,
-            Err(e) => failed.push(format!("{}: {}", file.filename, e)),
+            Err(e) => {
+                if e.contains("Invalid TMDB API key") || e.contains("Read Access Token") {
+                    return Err(e);
+                }
+                failed.push(format!("{}: {}", file.filename, e));
+            }
         }
         let (downloaded, total_bytes) = image_bytes();
         on_progress(index + 1, total, &file.filename, downloaded, total_bytes);
+        // Pace requests — bulk organize hits TMDB rate limits otherwise.
+        if index + 1 < total {
+            std::thread::sleep(Duration::from_millis(120));
+        }
     }
 
-        let (downloaded, total_bytes) = image_bytes();
-        on_progress(total, total, "Finishing…", downloaded, total_bytes);
+    let (downloaded, total_bytes) = image_bytes();
+    on_progress(total, total, "Finishing…", downloaded, total_bytes);
     {
         let db = db.lock().map_err(|e| e.to_string())?;
-        let _ = repair_library_shows(&db, api_key, library_roots);
+        let _ = repair_library_shows(&db, &api_key, library_roots);
+        on_progress(total, total, "Fetching missing posters…", downloaded, total_bytes);
+        let _ = enrich_missing_artwork(&client, &db, &api_key, &mut on_progress);
         let _ = db.heal_organized_flags();
     }
 
@@ -218,7 +288,18 @@ fn organize_one(
         false,
     )?;
 
-    let result = match file.category.as_str() {
+    let category = if file.category == "unknown" {
+        // Fall back: episode-like names → TV, otherwise treat as movie.
+        if parse_episode(&file.filename).is_some() {
+            "tv"
+        } else {
+            "movie"
+        }
+    } else {
+        file.category.as_str()
+    };
+
+    let result = match category {
         "movie" => organize_movie(client, db, api_key, file_id, &file.path, &file.library_root),
         "tv" | "anime" => organize_tv(
             client,
@@ -227,7 +308,7 @@ fn organize_one(
             file_id,
             &file.path,
             &file.library_root,
-            &file.category,
+            if category == "anime" { "anime" } else { "tv" },
             folder_show_cache,
         ),
         _ => Err("Unknown category".to_string()),
@@ -256,17 +337,79 @@ fn organize_one(
 }
 
 fn tmdb_get<T: serde::de::DeserializeOwned>(client: &Client, url: &str) -> Result<T, String> {
-    let resp = client.get(url).send().map_err(|e| e.to_string())?;
-    let status = resp.status();
-    let body = resp.text().map_err(|e| e.to_string())?;
-    if !status.is_success() {
-        if body.contains("Invalid API key") || body.contains("\"status_code\":7") {
-            return Err("Invalid TMDB API key — check Settings".to_string());
+    let mut last_err = String::new();
+    for attempt in 0..4 {
+        if attempt > 0 {
+            // Back off on rate limits / transient failures (250ms, 500ms, 1s).
+            std::thread::sleep(Duration::from_millis(250 * (1 << (attempt - 1))));
         }
-        let snippet: String = body.chars().take(200).collect();
-        return Err(format!("TMDB error ({}): {}", status, snippet));
+        let resp = match client.get(url).send() {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        let status = resp.status();
+        let body = match resp.text() {
+            Ok(b) => b,
+            Err(e) => {
+                last_err = e.to_string();
+                continue;
+            }
+        };
+        if status.as_u16() == 429 || status.is_server_error() {
+            last_err = format!("TMDB temporary error ({status})");
+            continue;
+        }
+        if !status.is_success() {
+            if body.contains("Invalid API key") || body.contains("\"status_code\":7") {
+                return Err("Invalid TMDB API key — check Settings".to_string());
+            }
+            let snippet: String = body.chars().take(200).collect();
+            return Err(format!("TMDB error ({}): {}", status, snippet));
+        }
+        return serde_json::from_str(&body).map_err(|e| format!("TMDB response parse error: {e}"));
     }
-    serde_json::from_str(&body).map_err(|e| format!("TMDB response parse error: {e}"))
+    Err(if last_err.is_empty() {
+        "TMDB request failed".to_string()
+    } else {
+        last_err
+    })
+}
+
+fn search_movies(
+    client: &Client,
+    api_key: &str,
+    title: &str,
+    year: Option<i32>,
+) -> Result<Vec<TmdbMovieResult>, String> {
+    let key = api_key_query(api_key);
+    if let Some(year) = year {
+        for year_param in ["primary_release_year", "year"] {
+            let url = format!(
+                "{}/search/movie?api_key={}&query={}&{}={}&include_adult=false",
+                TMDB_BASE,
+                key,
+                urlencoding_encode(title),
+                year_param,
+                year
+            );
+            if let Ok(resp) = tmdb_get::<TmdbSearchResponse<TmdbMovieResult>>(client, &url) {
+                if !resp.results.is_empty() {
+                    return Ok(resp.results);
+                }
+            }
+        }
+    }
+    let url = format!(
+        "{}/search/movie?api_key={}&query={}&include_adult=false",
+        TMDB_BASE,
+        key,
+        urlencoding_encode(title)
+    );
+    let resp: TmdbSearchResponse<TmdbMovieResult> = tmdb_get(client, &url)?;
+    Ok(resp.results)
 }
 
 fn pick_movie_result(results: &[TmdbMovieResult], year: Option<i32>) -> Option<&TmdbMovieResult> {
@@ -300,33 +443,27 @@ fn organize_movie(
         .unwrap_or(path);
     let mut parsed = None;
     let mut results: Vec<TmdbMovieResult> = Vec::new();
+    let mut last_search_err: Option<String> = None;
     for hint in title_hint_names(Path::new(path), library_root) {
         let candidate = parse_movie(&hint);
         if candidate.title.is_empty() {
             continue;
         }
         results.clear();
-        if let Some(year) = candidate.year {
-            let url = format!(
-                "{}/search/movie?api_key={}&query={}&year={}",
-                TMDB_BASE,
-                api_key,
-                urlencoding_encode(&candidate.title),
-                year
-            );
-            if let Ok(resp) = tmdb_get::<TmdbSearchResponse<TmdbMovieResult>>(client, &url) {
-                results = resp.results;
+        match search_movies(client, api_key, &candidate.title, candidate.year) {
+            Ok(found) => results = found,
+            Err(e) => {
+                last_search_err = Some(e);
+                continue;
             }
         }
         if results.is_empty() {
-            let url = format!(
-                "{}/search/movie?api_key={}&query={}",
-                TMDB_BASE,
-                api_key,
-                urlencoding_encode(&candidate.title)
-            );
-            if let Ok(resp) = tmdb_get::<TmdbSearchResponse<TmdbMovieResult>>(client, &url) {
-                results = resp.results;
+            let simplified = simplify_movie_query(&candidate.title);
+            if simplified != candidate.title && !simplified.is_empty() {
+                match search_movies(client, api_key, &simplified, candidate.year) {
+                    Ok(found) => results = found,
+                    Err(e) => last_search_err = Some(e),
+                }
             }
         }
         if !results.is_empty() {
@@ -334,20 +471,25 @@ fn organize_movie(
             break;
         }
     }
-    let parsed = parsed.ok_or("No TMDB match")?;
+    let parsed = parsed.ok_or_else(|| {
+        last_search_err.unwrap_or_else(|| "No TMDB match".to_string())
+    })?;
 
     let best = pick_movie_result(&results, parsed.year).ok_or("No TMDB match")?;
     let detail_url = format!(
         "{}/movie/{}?api_key={}&append_to_response=credits",
-        TMDB_BASE, best.id, api_key
+        TMDB_BASE,
+        best.id,
+        api_key_query(api_key)
     );
-    let detail: TmdbMovieDetail = tmdb_get(&client, &detail_url)?;
+    let detail: TmdbMovieDetail = tmdb_get(client, &detail_url)?;
 
+    // Artwork is best-effort — don't fail organize if CDN is blocked.
     if let Some(ref p) = detail.poster_path {
-        download_image(client, api_key, db, p, "/w342")?;
+        let _ = download_image(client, api_key, db, p, "/w342");
     }
     if let Some(ref b) = detail.backdrop_path {
-        download_image(client, api_key, db, b, "/w780")?;
+        let _ = download_image(client, api_key, db, b, "/w780");
     }
 
     let genres: String = detail
@@ -409,12 +551,23 @@ fn organize_movie(
 
     db.conn
         .execute(
-            "UPDATE media_files SET organized = 1 WHERE id = ?1",
+            "UPDATE media_files SET organized = 1, category = 'movie' WHERE id = ?1",
             params![file_id],
         )
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+fn simplify_movie_query(title: &str) -> String {
+    let mut tokens: Vec<&str> = title.split_whitespace().collect();
+    while tokens
+        .last()
+        .is_some_and(|t| matches!(*t, "Part" | "part" | "Pt" | "pt" | "Chapter" | "chapter"))
+    {
+        tokens.pop();
+    }
+    tokens.join(" ")
 }
 
 fn organize_tv(
@@ -534,9 +687,12 @@ fn resolve_show_for_folder_inner(
         }
     }
 
-    let show_id = match search_tv_best(client, api_key, folder_query, filename) {
+    let show_id = match search_tv_best(client, api_key, folder_query, filename)? {
         Some(best) => get_or_create_show(client, db, api_key, best.id, category)?,
-        None => get_or_create_local_show(db, folder_query, category)?,
+        None => {
+            // Only use a local placeholder when TMDB truly has no match — not on API errors.
+            get_or_create_local_show(db, folder_query, category)?
+        }
     };
 
     db.bind_folder_to_show(show_id, folder_key)?;
@@ -680,22 +836,22 @@ fn search_tv_all(
     api_key: &str,
     query: &str,
     language: &str,
-) -> Option<Vec<TmdbTvResult>> {
+) -> Result<Option<Vec<TmdbTvResult>>, String> {
     if query.trim().is_empty() {
-        return None;
+        return Ok(None);
     }
     let url = format!(
         "{}/search/tv?api_key={}&query={}&language={}&include_adult=false",
         TMDB_BASE,
-        api_key,
+        api_key_query(api_key),
         urlencoding_encode(query),
         language
     );
-    let resp: TmdbSearchResponse<TmdbTvResult> = tmdb_get(client, &url).ok()?;
+    let resp: TmdbSearchResponse<TmdbTvResult> = tmdb_get(client, &url)?;
     if resp.results.is_empty() {
-        None
+        Ok(None)
     } else {
-        Some(resp.results)
+        Ok(Some(resp.results))
     }
 }
 
@@ -704,7 +860,7 @@ fn search_tv_best(
     api_key: &str,
     folder: &str,
     filename: &str,
-) -> Option<TmdbTvResult> {
+) -> Result<Option<TmdbTvResult>, String> {
     let filename_title = parse_anime_show_title(filename).or_else(|| {
         let t = parse_show_title(filename);
         if t.len() >= 2 {
@@ -715,44 +871,48 @@ fn search_tv_best(
     });
     let queries = tv_search_queries(folder, filename);
     let mut best: Option<(i32, TmdbTvResult)> = None;
+    let mut saw_success = false;
 
     for query in &queries {
         for lang in ["en-US", "ja-JP"] {
-            let Some(results) = search_tv_all(client, api_key, query, lang) else {
-                continue;
-            };
-            for (idx, result) in results.into_iter().enumerate() {
-                let score = score_tv_match(
-                    &result.name,
-                    folder,
-                    filename_title.as_deref(),
-                );
-                let position_bonus = if idx == 0 { 250 } else { 0 };
-                let vote_bonus = result.vote_average.unwrap_or(0.0) as i32;
-                let total = score + position_bonus + vote_bonus;
-                let replace = best
-                    .as_ref()
-                    .map(|(s, _)| total > *s)
-                    .unwrap_or(true);
-                if replace {
-                    best = Some((total, result));
+            match search_tv_all(client, api_key, query, lang)? {
+                Some(results) => {
+                    saw_success = true;
+                    for (idx, result) in results.into_iter().enumerate() {
+                        let score = score_tv_match(
+                            &result.name,
+                            folder,
+                            filename_title.as_deref(),
+                        );
+                        let position_bonus = if idx == 0 { 250 } else { 0 };
+                        let vote_bonus = result.vote_average.unwrap_or(0.0) as i32;
+                        let total = score + position_bonus + vote_bonus;
+                        let replace = best
+                            .as_ref()
+                            .map(|(s, _)| total > *s)
+                            .unwrap_or(true);
+                        if replace {
+                            best = Some((total, result));
+                        }
+                    }
                 }
+                None => {}
             }
         }
     }
 
     // Accept TMDB's top hit when the folder query returned something (search relevance)
-    if best.is_none() {
+    if best.is_none() && saw_success {
         for lang in ["en-US", "ja-JP"] {
-            if let Some(mut results) = search_tv_all(client, api_key, folder, lang) {
+            if let Some(mut results) = search_tv_all(client, api_key, folder, lang)? {
                 if let Some(first) = results.drain(..1).next() {
-                    return Some(first);
+                    return Ok(Some(first));
                 }
             }
         }
     }
 
-    best.map(|(_, r)| r)
+    Ok(best.map(|(_, r)| r))
 }
 
 fn get_or_create_show(
@@ -773,15 +933,15 @@ fn get_or_create_show(
 
     let detail_url = format!(
         "{}/tv/{}?api_key={}&append_to_response=credits",
-        TMDB_BASE, tmdb_id, api_key
+        TMDB_BASE, tmdb_id, api_key_query(api_key)
     );
     let detail: TmdbTvDetail = tmdb_get(client, &detail_url)?;
 
     if let Some(ref p) = detail.poster_path {
-        download_image(client, api_key, db, p, "/w342")?;
+        let _ = download_image(client, api_key, db, p, "/w342");
     }
     if let Some(ref b) = detail.backdrop_path {
-        download_image(client, api_key, db, b, "/w780")?;
+        let _ = download_image(client, api_key, db, b, "/w780");
     }
 
     let genres: String = detail
@@ -847,7 +1007,7 @@ fn ensure_show_episodes_cached(
         return Ok(());
     }
 
-    let detail_url = format!("{}/tv/{}?api_key={}", TMDB_BASE, tmdb_id, api_key);
+    let detail_url = format!("{}/tv/{}?api_key={}", TMDB_BASE, tmdb_id, api_key_query(api_key));
     let detail: TmdbTvDetail = tmdb_get(client, &detail_url)?;
     if let Some(seasons) = detail.seasons {
         for sm in seasons {
@@ -870,7 +1030,7 @@ fn cache_season(
 ) -> Result<(), String> {
     let url = format!(
         "{}/tv/{}/season/{}?api_key={}",
-        TMDB_BASE, tmdb_id, season_number, api_key
+        TMDB_BASE, tmdb_id, season_number, api_key_query(api_key)
     );
     let detail: TmdbSeasonDetail = tmdb_get(client, &url)?;
 
@@ -902,6 +1062,204 @@ pub struct RepairResult {
     pub shows_removed: usize,
 }
 
+/// Public wrapper so commands can refresh posters without owning the HTTP client setup.
+pub fn enrich_missing_artwork_public(
+    db: &Mutex<AppDatabase>,
+    api_key: &str,
+    mut on_progress: impl FnMut(usize, usize, &str, u64, u64),
+) -> Result<usize, String> {
+    if api_key.is_empty() {
+        return Err("Add your TMDB API key in Settings first".to_string());
+    }
+    let client = tmdb_client()?;
+    let locked = db.lock().map_err(|e| e.to_string())?;
+    enrich_missing_artwork(&client, &locked, api_key, &mut on_progress)
+}
+
+fn enrich_missing_artwork(
+    client: &Client,
+    db: &AppDatabase,
+    api_key: &str,
+    on_progress: &mut impl FnMut(usize, usize, &str, u64, u64),
+) -> Result<usize, String> {
+    let mut fixed = 0usize;
+
+    let shows: Vec<(i64, i64, String, String)> = {
+        let mut stmt = db
+            .conn
+            .prepare(
+                r"SELECT id, tmdb_id, title, category FROM tmdb_tv_shows
+                  WHERE poster_path IS NULL OR poster_path = ''
+                  ORDER BY title",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+    };
+
+    let show_total = shows.len().max(1);
+    for (i, (show_id, tmdb_id, title, category)) in shows.iter().enumerate() {
+        let (downloaded, total_bytes) = image_bytes();
+        on_progress(i + 1, show_total, &format!("Poster: {title}"), downloaded, total_bytes);
+
+        let matched_id = if *tmdb_id > 0 {
+            Some(*tmdb_id)
+        } else {
+            search_tv_best(client, api_key, title, "").ok().flatten().map(|r| r.id)
+        };
+
+        let Some(matched_id) = matched_id else {
+            continue;
+        };
+
+        if let Ok(()) = upgrade_show_from_tmdb(client, db, api_key, *show_id, matched_id, category) {
+            fixed += 1;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    let movies: Vec<(i64, String)> = {
+        let mut stmt = db
+            .conn
+            .prepare(
+                r"SELECT id, title FROM tmdb_movies
+                  WHERE poster_path IS NULL OR poster_path = ''
+                  ORDER BY title",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?
+    };
+
+    for (movie_id, title) in movies {
+        let parsed = parse_movie(&title);
+        let Ok(results) = search_movies(client, api_key, &parsed.title, parsed.year) else {
+            continue;
+        };
+        let Some(best) = pick_movie_result(&results, parsed.year) else {
+            continue;
+        };
+        let detail_url = format!(
+            "{}/movie/{}?api_key={}&append_to_response=credits",
+            TMDB_BASE, best.id, api_key_query(api_key)
+        );
+        let Ok(detail) = tmdb_get::<TmdbMovieDetail>(client, &detail_url) else {
+            continue;
+        };
+        if let Some(ref p) = detail.poster_path {
+            let _ = download_image(client, api_key, db, p, "/w342");
+        }
+        if let Some(ref b) = detail.backdrop_path {
+            let _ = download_image(client, api_key, db, b, "/w780");
+        }
+        let genres: String = detail
+            .genres
+            .unwrap_or_default()
+            .iter()
+            .map(|g| g.name.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        db.conn
+            .execute(
+                r"UPDATE tmdb_movies SET tmdb_id=?1, title=?2, overview=?3, release_date=?4,
+                   poster_path=?5, backdrop_path=?6, vote_average=?7, runtime=?8, genres=?9
+                   WHERE id=?10",
+                params![
+                    detail.id,
+                    detail.title,
+                    detail.overview,
+                    detail.release_date,
+                    detail.poster_path,
+                    detail.backdrop_path,
+                    detail.vote_average.unwrap_or(0.0),
+                    detail.runtime,
+                    genres,
+                    movie_id
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        fixed += 1;
+        std::thread::sleep(Duration::from_millis(80));
+    }
+
+    Ok(fixed)
+}
+
+fn upgrade_show_from_tmdb(
+    client: &Client,
+    db: &AppDatabase,
+    api_key: &str,
+    show_id: i64,
+    tmdb_id: i64,
+    category: &str,
+) -> Result<(), String> {
+    let detail_url = format!(
+        "{}/tv/{}?api_key={}&append_to_response=credits",
+        TMDB_BASE, tmdb_id, api_key_query(api_key)
+    );
+    let detail: TmdbTvDetail = tmdb_get(client, &detail_url)?;
+
+    if let Some(ref p) = detail.poster_path {
+        let _ = download_image(client, api_key, db, p, "/w342");
+    }
+    if let Some(ref b) = detail.backdrop_path {
+        let _ = download_image(client, api_key, db, b, "/w780");
+    }
+
+    let genres: String = detail
+        .genres
+        .unwrap_or_default()
+        .iter()
+        .map(|g| g.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    db.conn
+        .execute(
+            r"UPDATE tmdb_tv_shows SET tmdb_id=?1, title=?2, overview=?3, first_air_date=?4,
+               poster_path=?5, backdrop_path=?6, vote_average=?7, genres=?8, status=?9,
+               metadata_json=?10
+               WHERE id=?11",
+            params![
+                tmdb_id,
+                detail.name,
+                detail.overview,
+                detail.first_air_date,
+                detail.poster_path,
+                detail.backdrop_path,
+                detail.vote_average.unwrap_or(0.0),
+                genres,
+                detail.status.unwrap_or_default(),
+                serde_json::json!({}).to_string(),
+                show_id
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
+    let _ = category;
+    if let Some(seasons) = detail.seasons {
+        for sm in seasons {
+            if sm.season_number < 0 {
+                continue;
+            }
+            let _ = cache_season(client, db, api_key, show_id, tmdb_id, sm.season_number);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn repair_library_shows(
     db: &AppDatabase,
     api_key: &str,
@@ -910,7 +1268,7 @@ pub fn repair_library_shows(
     if api_key.is_empty() {
         return Err("Add your TMDB API key in Settings first".to_string());
     }
-    let client = Client::new();
+    let client = tmdb_client()?;
     let files = db.list_show_folder_groups()?;
     let mut folder_map: HashMap<String, (String, String)> = HashMap::new();
 
@@ -991,13 +1349,13 @@ pub fn search_tmdb(api_key: &str, query: &str, media_type: &str) -> Result<Vec<T
     if api_key.is_empty() {
         return Err("TMDB API key required".to_string());
     }
-    let client = Client::new();
+    let client = tmdb_client()?;
     let endpoint = if media_type == "movie" { "search/movie" } else { "search/tv" };
     let url = format!(
         "{}/{}?api_key={}&query={}",
         TMDB_BASE,
         endpoint,
-        api_key,
+        api_key_query(api_key),
         urlencoding_encode(query)
     );
 
